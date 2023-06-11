@@ -17,6 +17,15 @@ public class Dragon implements Serializable {
     private final Double wingspan;
     private final DragonCharacter character;
     private final DragonCave cave;
+    private User owner;
+
+    public User getOwner() {
+        return owner;
+    }
+
+    public void setOwner(User owner) {
+        this.owner = owner;
+    }
 
     public Dragon(
             Integer id,
@@ -27,7 +36,8 @@ public class Dragon implements Serializable {
             String description,
             Double wingspan,
             DragonCharacter character,
-            DragonCave cave
+            DragonCave cave,
+            User owner
     ) {
         validateParameters(id, name, coordinates, creationDate, age, description, wingspan, character, cave);
 
@@ -40,6 +50,7 @@ public class Dragon implements Serializable {
         this.wingspan = wingspan;
         this.character = character;
         this.cave = cave;
+        this.owner = owner;
     }
     public void setServer(int id, LocalDateTime creationDate) {
         this.id = id;

@@ -5,6 +5,7 @@ import java.io.FileOutputStream;
 import java.io.IOException;
 import java.io.OutputStreamWriter;
 import java.io.Writer;
+import java.math.BigInteger;
 import java.net.DatagramPacket;
 import java.net.DatagramSocket;
 import java.net.InetSocketAddress;
@@ -16,6 +17,11 @@ import java.nio.channels.DatagramChannel;
 import java.nio.channels.SelectionKey;
 import java.nio.channels.Selector;
 import java.nio.file.Path;
+import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
+import java.sql.PreparedStatement;
+import java.sql.ResultSet;
+import java.sql.SQLException;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
@@ -31,13 +37,15 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ForkJoinPool;
 import java.util.concurrent.Future;
-import lab6.controllers.CollectionController;
+import lab6.Main;
 import lab6.model.Dragon;
-import lab6.representations.json.JsonCollectionControllerRepr;
 import lab6.udp.ChunksData;
 import lab6.udp.ServerCommand;
 import lab6.udp.ServerCommandType;
 import lab6.udp.Utils;
+import lab6.controllers.ServerCollectionController;
+import lab6.model.User;
+import lab6.model.UserCredentials;
 
 public class Server {
     public static final int PACKET_SIZE = 5*1024-8;
@@ -50,11 +58,9 @@ public class Server {
     private ExecutorService responseThreadPool;
     private List<Future<?>> futures = new CopyOnWriteArrayList<>();
     
-    private CollectionController controller = null;
-    private Path path = null;
+    private ServerCollectionController controller = null;
     
-    public Server(Path path, CollectionController controller) {
-        this.path = path;
+    public Server(ServerCollectionController controller) {
         this.controller = controller;
     }
     public void run() throws IOException {
@@ -87,11 +93,11 @@ public class Server {
                         byte[] requestFull = clientChunks.get(key).getFullResponse();
                         System.out.println("(Thread Analyzing) Получен полный запрос клиента длиной в " + requestFull.length + " байт.");
                         ServerCommand toExecute = (ServerCommand)Utils.deserializeObject(requestFull);
-                        /*User caller = Main.getStorageManager().authorizeUser(toExecute.userCredentials);
-                        ServerCommand tempMessage = new ServerCommand(ServerCommandType.ERROR, Utils.serializeObject("Нельзя выполнять команды неавторизованным пользователем"));
+                        // auth
+                        User caller = authorizeUser(toExecute.userCredentials);
+                        ServerCommand message = new ServerCommand(ServerCommandType.ERROR, Utils.serializeObject("Нельзя выполнять команды неавторизованным пользователем"));
                         if(caller != null || toExecute.type == ServerCommandType.AUTH || toExecute.type == ServerCommandType.REGISTER)
-                            tempMessage = executeInput(toExecute, caller);*/
-                        final ServerCommand message = executeInput(toExecute/*, caller*/);
+                            message = executeInput(toExecute, caller);
                         // Отправка ответа на клиентскую сторону
                         List<byte[]> chunks = splitByteArray(Utils.serializeObject(message));
                         for (int i = 0; i < chunks.size(); i++) {
@@ -183,22 +189,29 @@ public class Server {
      * @param action Command with arguments
      * @return Result
      */
-    public final ServerCommand executeInput(ServerCommand action) {
+    public final ServerCommand executeInput(ServerCommand action, User caller) {
         ServerCommandType type = action.type;
         byte[] args = action.data;
+        if(caller == null) {
+            switch (type) {
+                case AUTH:
+                    return new ServerCommand(ServerCommandType.ERROR, null);
+                case REGISTER:
+                    return new ServerCommand(createUser(action.userCredentials) ? ServerCommandType.REGISTER : ServerCommandType.ERROR, null);
+                default:
+                    return new ServerCommand(ServerCommandType.ERROR, null);
+            }
+        }
         try {
             switch (type) {
                 case ADD:
                     controller.add((Dragon)Utils.deserializeObject(args));
-                    save();
                     return new ServerCommand(ServerCommandType.ADD, null);
                 case ADD_IF_MAX:
                     controller.addIfMax((Dragon)Utils.deserializeObject(args));
-                    save();
                     return new ServerCommand(ServerCommandType.ADD_IF_MAX, null);
                 case CLEAR:
-                    controller.clear();
-                    save();
+                    controller.clear(caller);
                     return new ServerCommand(ServerCommandType.CLEAR, null);
                 case COUNT_LESS_THAN_WINGSPAN:
                     return new ServerCommand(ServerCommandType.COUNT_LESS_THAN_WINGSPAN, Utils.intToBytes(controller.countLessThanWingspan((Double)Utils.deserializeObject(args))));
@@ -210,30 +223,24 @@ public class Server {
                     return new ServerCommand(ServerCommandType.GET_INDEX, Utils.intToBytes(controller.getIndexById(Utils.fromByteArray(args))));
                 case GET_INIT:
                     return new ServerCommand(ServerCommandType.GET_INIT, Utils.serializeObject(controller.getInitTime()));
-                case INSERT:
-                    ArrayList<Object> insertArgs = (ArrayList<Object>)Utils.deserializeObject(args);
-                    controller.insertAt((int)insertArgs.get(0), (Dragon)insertArgs.get(1));
-                    save();
-                    return new ServerCommand(ServerCommandType.INSERT, null);
                 case IS_EMPTY:
                     return new ServerCommand(ServerCommandType.IS_EMPTY, new byte[]{(byte)(controller.isEmpty() ? 1 : 0)});
                 case REMOVE:
-                    controller.removeById(Utils.fromByteArray(args));
-                    save();
+                    controller.removeById(Utils.fromByteArray(args), caller);
                     return new ServerCommand(ServerCommandType.REMOVE, null);
                 case REMOVE_GREATER:
                     controller.removeGreater((Dragon)Utils.deserializeObject(args));
-                    save();
                     return new ServerCommand(ServerCommandType.REMOVE_GREATER, null);
                 case SIZE:
                     return new ServerCommand(ServerCommandType.SIZE, Utils.intToBytes(controller.size()));
                 case UPDATE:
                     ArrayList<Object> updateArgs = (ArrayList<Object>)Utils.deserializeObject(args);
-                    controller.updateById((int)updateArgs.get(0), (Dragon)updateArgs.get(1));
-                    save();
+                    controller.updateById((int)updateArgs.get(0), (Dragon)updateArgs.get(1), caller);
                     return new ServerCommand(ServerCommandType.UPDATE, null);
                 case UPDATE_DATA:
                     return new ServerCommand(ServerCommandType.UPDATE_DATA, Utils.serializeObject(controller.getCollection()));
+                case AUTH:
+                    return new ServerCommand(ServerCommandType.AUTH, Utils.serializeObject(caller));
                 default:
                     return new ServerCommand(ServerCommandType.ERROR, Utils.serializeObject("Неизвестная команда для сервера"));
             }
@@ -292,12 +299,54 @@ public class Server {
         return chunks;
     }
     
-    public boolean save() throws IOException {
-        try (BufferedWriter fileWriter = new BufferedWriter(new OutputStreamWriter(new FileOutputStream(path.toString())))) {
-            JsonCollectionControllerRepr.write(fileWriter, controller);
-            System.out.println("Successfully saved");
-            fileWriter.flush();
-        } catch (IOException e) {}
-        return true;
+    public User authorizeUser(UserCredentials credentials) {
+        if(credentials == null || credentials.getUsername() == null || credentials.getPassword() == null)
+            return null;
+        ResultSet resultSet = null;
+        try {
+            PreparedStatement sql = Main.sqlController.getConnection().prepareStatement("SELECT * FROM users WHERE username = ? AND password = ?");
+            sql.setString(1, credentials.getUsername());
+            sql.setString(2, hashPassword(credentials.getPassword()));
+            resultSet = Main.sqlController.get(sql);
+        }
+        catch(SQLException ex) {}
+        if(resultSet == null)
+            throw new IllegalArgumentException("Не удалось получить данные о пользователях");
+        try {
+            while(resultSet.next())
+                return new User(resultSet.getInt("id"), resultSet.getString("username"));
+        } catch(SQLException ex) {
+            ex.printStackTrace();
+        }
+        return null;
+    }
+    public boolean createUser(UserCredentials credentials) {
+        if(credentials.getUsername().length() < 3 || credentials.getPassword().length() < 3)
+            return false;
+        try {
+            PreparedStatement sql = Main.sqlController.getConnection().prepareStatement("INSERT INTO users (username, password) VALUES (?, ?);");
+            sql.setString(1, credentials.getUsername());
+            sql.setString(2, hashPassword(credentials.getPassword()));
+            return Main.sqlController.send(sql);
+        } catch (SQLException ex) {
+            return false;
+        }
+    }
+    
+    public static String hashPassword(String input)
+    {
+        try {
+            MessageDigest md = MessageDigest.getInstance("MD2");
+            byte[] messageDigest = md.digest(input.getBytes());
+            BigInteger no = new BigInteger(1, messageDigest);
+            String hashtext = no.toString(16);
+            while (hashtext.length() < 32) {
+                hashtext = "0" + hashtext;
+            }
+            return hashtext;
+        }
+        catch (NoSuchAlgorithmException e) {
+            throw new RuntimeException(e);
+        }
     }
 }
