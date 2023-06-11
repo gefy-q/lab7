@@ -16,6 +16,7 @@ import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Scanner;
+import lab6.Main;
 
 public class ConsoleDragonRepr extends ConsoleRepr {
     private Integer id;
@@ -98,7 +99,7 @@ public class ConsoleDragonRepr extends ConsoleRepr {
         ConsoleDragonCaveRepr caveRepr = dragonRepr.getCave();
         DragonCave cave = new DragonCave(caveRepr.getNumberOfTreasures());
 
-        return new Dragon(-1, dragonRepr.getName(), coordinates, null, dragonRepr.getAge(), dragonRepr.getDescription(), dragonRepr.getWingspan(), dragonRepr.getCharacter(), cave);
+        return new Dragon(-1, dragonRepr.getName(), coordinates, null, dragonRepr.getAge(), dragonRepr.getDescription(), dragonRepr.getWingspan(), dragonRepr.getCharacter(), cave, Main.getCurrentUser());
     }
 
     public static void show(Scanner scanner, Writer writer, Dragon dragon) throws IOException {
@@ -114,6 +115,7 @@ public class ConsoleDragonRepr extends ConsoleRepr {
         println(writer, "Character: " + dragon.getCharacter());
         println(writer, "Cave:");
         ConsoleDragonCaveRepr.show(scanner, writer, dragon.getCave());
+        println(writer, "Owner: " + dragon.getOwner().getUsername());
     }
 
     public static void show(Scanner scanner, Writer writer, ArrayList<Dragon> dragons) throws IOException {

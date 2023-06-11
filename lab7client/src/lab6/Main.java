@@ -22,11 +22,15 @@ import java.util.ArrayList;
 import java.util.Scanner;
 import java.util.logging.Level;
 import java.util.logging.Logger;
+import lab6.model.User;
+import lab6.model.UserCredentials;
 import lab6.udp.UDPManager;
 
 
 public class Main {
-    public static UDPManager udpManager = null;
+    private static UDPManager udpManager = null;
+    private static User currentUser = null;
+    private static UserCredentials credentials = null;
     public static void main(String[] args) {
 
         BufferedReader inputReader = new BufferedReader(new InputStreamReader(System.in));
@@ -38,7 +42,26 @@ public class Main {
         }
         View view = new View(new RemoteController());
         view.run(inputReader, outputWriter);
-
-
     }
+
+    public static UDPManager getUdpManager() {
+        return udpManager;
+    }
+
+    public static User getCurrentUser() {
+        return currentUser;
+    }
+
+    public static void setCurrentUser(User currentUser) {
+        Main.currentUser = currentUser;
+    }
+
+    public static UserCredentials getCredentials() {
+        return credentials;
+    }
+
+    public static void setCredentials(UserCredentials credentials) {
+        Main.credentials = credentials;
+    }
+    
 }

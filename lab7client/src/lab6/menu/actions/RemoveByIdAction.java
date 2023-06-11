@@ -8,6 +8,8 @@ import lab6.controllers.CollectionController;
 import java.io.IOException;
 import java.io.Writer;
 import java.util.Scanner;
+import lab6.Main;
+import lab6.model.User;
 
 public class RemoveByIdAction extends Action {
     private final CollectionController controller;
@@ -35,6 +37,12 @@ public class RemoveByIdAction extends Action {
 
         if (!controller.containsId(id)) {
             writer.write(String.format("Dragon with id \"%d\" not found\n", id));
+            writer.flush();
+            return true;
+        }
+        User owner = controller.getOwner(id);
+        if(owner == null || owner.getId() != Main.getCurrentUser().getId()) {
+            writer.write(String.format("You are not the owner of dragon with id \"%d\"\n", id));
             writer.flush();
             return true;
         }
