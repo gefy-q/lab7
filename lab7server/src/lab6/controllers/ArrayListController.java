@@ -192,24 +192,18 @@ public class ArrayListController implements ServerCollectionController {
 
     @Override
     public int countByAge(Integer age) {
-        int count = 0;
-        for (Dragon dragon : dragons) {
-            if (dragon.getAge().equals(age)) {
-                ++count;
-            }
-        }
-        return count;
+        long count = dragons.stream()
+                .filter(x -> x.getAge().equals(age))
+                .count();
+        return Math.toIntExact(count);
     }
 
     @Override
     public int countLessThanWingspan(Double wingspan) {
-        int count = 0;
-        for (Dragon dragon : dragons) {
-            if (dragon.getWingspan() < wingspan) {
-                ++count;
-            }
-        }
-        return count;
+        long count = dragons.stream()
+                .filter(x -> x.getWingspan() < wingspan)
+                .count();
+        return Math.toIntExact(count);
     }
 
     @Override
