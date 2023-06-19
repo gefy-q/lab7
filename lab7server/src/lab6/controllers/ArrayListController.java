@@ -63,7 +63,7 @@ public class ArrayListController implements ServerCollectionController {
     }
     @Override
     public ArrayList<Dragon> getCollection() {
-        updateSQLData();
+        // updateSQLData();
         return (ArrayList<Dragon>)dragons.stream().sorted(Comparator.comparing(Dragon::getName)).collect(Collectors.toList());
     }
     
